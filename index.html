@@ -1381,8 +1381,9 @@ ${context ? '컨텍스트: ' + context : ''}
 썸네일팁: [클릭률 높이는 썸네일 구성 팁 3가지]`;
 
   try {
+    const seed = Math.floor(Math.random() * 4294967295);
     const encoded = encodeURIComponent(prompt);
-    const resp = await fetch(`https://text.pollinations.ai/${encoded}?model=openai&seed=${Date.now()}`);
+    const resp = await fetch(`https://text.pollinations.ai/${encoded}?model=openai&seed=${seed}`);
     const text = await resp.text();
     
     displaySEOResults(text, keyword);
@@ -1542,7 +1543,7 @@ async function generateImages() {
   for (let i = 0; i < count; i++) {
     setImgProgress((i / count) * 100, `이미지 ${i+1}/${count} 생성 중...`);
     
-    const seed = Math.floor(Math.random() * 999999);
+    const seed = Math.floor(Math.random() * 4294967295);
     const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=${w}&height=${h}&seed=${seed}&nologo=true&model=flux`;
     
     generatedImages.push(url);
@@ -1991,3 +1992,4 @@ function downloadProject() {
 </script>
 </body>
 </html>
+
