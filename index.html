@@ -1381,9 +1381,8 @@ ${context ? '컨텍스트: ' + context : ''}
 썸네일팁: [클릭률 높이는 썸네일 구성 팁 3가지]`;
 
   try {
-    const seed = Math.floor(Math.random() * 4294967295);
     const encoded = encodeURIComponent(prompt);
-    const resp = await fetch(`https://text.pollinations.ai/${encoded}?model=openai&seed=${seed}`);
+    const resp = await fetch(`https://text.pollinations.ai/${encoded}?model=openai`);
     const text = await resp.text();
     
     displaySEOResults(text, keyword);
