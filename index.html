@@ -1518,60 +1518,105 @@ const FORMAT_SIZES = {
   '1:1': { w: 1024, h: 1024 },
 };
 
+// Pollinations 이미지 URL 생성 (seed: 0~65535 안전 범위)
+function buildImgUrl(prompt, w, h, seed, attempt) {
+  const models = ['flux', 'flux-realism', 'turbo'];
+  const model = models[attempt % models.length];
+  const safeSeed = seed % 65535;
+  return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${w}&height=${h}&seed=${safeSeed}&nologo=true&enhance=true&model=${model}`;
+}
+
+// img 로드 + 에러 감지 (1033 페이지는 naturalWidth < 10)
+function loadImgWithVerify(url, format) {
+  return new Promise(resolve => {
+    const img = document.createElement('img');
+    img.className = 'img-thumb' + (format === '9:16' ? ' shorts' : '');
+    img.style.cssText = 'opacity:0;transition:opacity 0.5s;';
+
+    const timer = setTimeout(() => resolve({ img, ok: false }), 25000);
+
+    img.onload = () => {
+      clearTimeout(timer);
+      if (img.naturalWidth < 20) {
+        resolve({ img, ok: false });
+      } else {
+        img.style.opacity = '1';
+        resolve({ img, ok: true, src: url });
+      }
+    };
+    img.onerror = () => { clearTimeout(timer); resolve({ img, ok: false }); };
+    img.src = url;
+  });
+}
+
 async function generateImages() {
   const prompt = document.getElementById('imgPrompt').value.trim();
   if (!prompt) { alert('프롬프트를 입력해주세요!'); return; }
-  
-  const count = parseInt(document.getElementById('imgCount').value);
+
+  const count  = parseInt(document.getElementById('imgCount').value);
   const format = document.getElementById('imgFormat').value;
-  const style = document.getElementById('imgStyle').value;
-  const neg = document.getElementById('imgNeg').value;
+  const style  = document.getElementById('imgStyle').value;
   const { w, h } = FORMAT_SIZES[format];
-  
+
   const fullPrompt = `${prompt}, ${style}, high quality, professional, sharp`;
-  
+
   const gallery = document.getElementById('imageGallery');
   gallery.innerHTML = '';
   generatedImages = [];
-  
-  const progress = document.getElementById('imgProgress');
-  progress.classList.add('active');
-  
+
+  document.getElementById('imgProgress').classList.add('active');
   document.getElementById('imgCountBadge').textContent = '';
-  
+
+  let successCount = 0;
+
   for (let i = 0; i < count; i++) {
-    setImgProgress((i / count) * 100, `이미지 ${i+1}/${count} 생성 중...`);
-    
-    const seed = Math.floor(Math.random() * 4294967295);
-    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=${w}&height=${h}&seed=${seed}&nologo=true&model=flux`;
-    
-    generatedImages.push(url);
-    
-    const img = document.createElement('img');
-    img.src = url;
-    img.className = 'img-thumb' + (format === '9:16' ? ' shorts' : '');
-    img.alt = `AI 생성 이미지 ${i+1}`;
-    img.title = `이미지 ${i+1} - 클릭으로 전체보기`;
-    img.onclick = () => window.open(url, '_blank');
-    img.style.opacity = '0';
-    img.style.transition = 'opacity 0.5s';
-    img.onload = () => { img.style.opacity = '1'; };
-    
-    gallery.appendChild(img);
-    
-    await sleep(300);
+    setImgProgress((i / count) * 100, `이미지 ${i + 1}/${count} 생성 중...`);
+
+    // 플레이스홀더
+    const ratioStyle = format === '9:16' ? '9/16' : format === '1:1' ? '1/1' : '16/9';
+    const ph = document.createElement('div');
+    ph.style.cssText = `aspect-ratio:${ratioStyle};background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;font-size:0.72rem;color:var(--muted);font-family:monospace;`;
+    ph.innerHTML = '<div class="spinner" style="border-top-color:var(--accent);"></div><span>생성 중...</span>';
+    gallery.appendChild(ph);
+
+    const baseSeed = Math.floor(Math.random() * 60000);
+    let succeeded = false;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const url = buildImgUrl(fullPrompt, w, h, baseSeed + attempt * 1000, attempt);
+      setImgProgress((i / count) * 100, `이미지 ${i + 1}/${count} 생성 중... (시도 ${attempt + 1}/3)`);
+
+      const { img, ok, src } = await loadImgWithVerify(url, format);
+      if (ok) {
+        img.title = `이미지 ${i + 1} — 클릭으로 원본 보기`;
+        img.onclick = () => window.open(src, '_blank');
+        gallery.replaceChild(img, ph);
+        generatedImages.push(src);
+        successCount++;
+        succeeded = true;
+        break;
+      }
+      await sleep(2000);
+    }
+
+    if (!succeeded) {
+      ph.innerHTML = '<span style="color:var(--red);text-align:center;">⚠️ 생성 실패<br><span style="font-size:0.6rem;color:var(--muted);">버튼 다시 클릭</span></span>';
+    }
+
+    if (i < count - 1) await sleep(1000);
   }
-  
-  setImgProgress(100, '✅ 이미지 생성 완료!');
-  await sleep(500);
-  progress.classList.remove('active');
-  
-  document.getElementById('imgCountBadge').textContent = count + '장';
-  document.getElementById('dlAllBtn').style.display = 'inline-flex';
-  document.getElementById('sendVideoBtn').style.display = 'inline-flex';
-  
-  sourceImages = generatedImages.slice();
-  updateSourceGallery();
+
+  setImgProgress(100, successCount > 0 ? `✅ ${successCount}장 생성 완료!` : '⚠️ 생성 실패 — 다시 시도해주세요');
+  await sleep(600);
+  document.getElementById('imgProgress').classList.remove('active');
+
+  if (successCount > 0) {
+    document.getElementById('imgCountBadge').textContent = successCount + '장';
+    document.getElementById('dlAllBtn').style.display = 'inline-flex';
+    document.getElementById('sendVideoBtn').style.display = 'inline-flex';
+    sourceImages = generatedImages.slice();
+    updateSourceGallery();
+  }
 }
 
 function setImgProgress(pct, label) {
@@ -1991,4 +2036,3 @@ function downloadProject() {
 </script>
 </body>
 </html>
-
